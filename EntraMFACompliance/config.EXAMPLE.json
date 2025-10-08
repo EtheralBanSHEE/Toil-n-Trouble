@@ -1,0 +1,47 @@
+{
+  "_comments": [
+    "MS 365 Entra ID MFA Compliance Configuration File",
+    "Copy this file to config.json and update with your tenant details",
+    "IMPORTANT: Never commit config.json with real secrets to version control"
+  ],
+
+  "TenantId": "00000000-0000-0000-0000-000000000000",
+  "_TenantId_Help": "Your Azure AD Tenant ID (found in Azure Portal > Azure Active Directory > Properties)",
+
+  "ClientId": "00000000-0000-0000-0000-000000000000",
+  "_ClientId_Help": "App Registration Client ID (Application ID from Azure Portal > App Registrations)",
+
+  "ComplianceThresholds": {
+    "ActiveUserDays": 20,
+    "_ActiveUserDays_Help": "Users with successful sign-in within this many days are considered Active",
+
+    "InactiveDays": 21,
+    "_InactiveDays_Help": "Users without sign-in for this many days are flagged as Inactive/Stale",
+
+    "MinimumMFAMethods": 2,
+    "_MinimumMFAMethods_Help": "Expected minimum number of MFA methods per user for compliance",
+
+    "PreferredDefaultMethod": "MicrosoftAuthenticator",
+    "_PreferredDefaultMethod_Help": "Preferred default MFA method (MicrosoftAuthenticator, Phone, Email, etc.)"
+  },
+
+  "Retention": {
+    "BaselineRetentionDays": 60,
+    "_BaselineRetentionDays_Help": "How many days to retain old baseline, report, and log files before auto-cleanup"
+  },
+
+  "FolderPaths": {
+    "_FolderPaths_Help": "Optional: Override default folder paths (relative to script location)",
+    "BaselineFolder": "./baselines",
+    "ReportFolder": "./reports",
+    "LogFolder": "./logs"
+  },
+
+  "Features": {
+    "EnableAutoCleanup": true,
+    "_EnableAutoCleanup_Help": "Automatically delete files older than BaselineRetentionDays",
+
+    "VerboseLogging": false,
+    "_VerboseLogging_Help": "Enable detailed debug logging (useful for troubleshooting)"
+  }
+}

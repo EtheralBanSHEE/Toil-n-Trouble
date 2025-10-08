@@ -1,0 +1,2 @@
+# This file ensures the baselines folder is tracked in git
+# Actual baseline JSON files are ignored via .gitignore

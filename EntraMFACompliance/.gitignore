@@ -1,0 +1,24 @@
+# Ignore configuration file with real secrets
+config.json
+
+# Ignore generated data files
+baselines/*.json
+reports/*.csv
+logs/*.log
+
+# Keep the folders but ignore contents
+!baselines/.gitkeep
+!reports/.gitkeep
+!logs/.gitkeep
+
+# Ignore PowerShell module cache
+**/.psmodule/
+
+# Ignore Windows temporary files
+Thumbs.db
+desktop.ini
+
+# Ignore credential files
+*.txt
+secret.txt
+credentials.json

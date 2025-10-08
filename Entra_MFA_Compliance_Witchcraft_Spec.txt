@@ -1,0 +1,526 @@
+═══════════════════════════════════════════════════════════════════════════════
+WITCHCRAFT PROMPT SPECIFICATION
+MS 365 Entra ID - User Status & MFA Drift Compliance Tool
+═══════════════════════════════════════════════════════════════════════════════
+
+PROJECT NAME: Entra MFA Compliance Guardian
+TARGET AUDIENCE: Small business IT technicians (managing <50 users)
+SKILL LEVEL: Novice (requires extensive inline comments)
+FRAMEWORK COMPLIANCE: SOC 2, ISO 27001, NIST
+
+───────────────────────────────────────────────────────────────────────────────
+🔮 WITCH - PROMPT CONSTRUCTION
+───────────────────────────────────────────────────────────────────────────────
+
+┌─ W - WHY (Problem & Purpose) ────────────────────────────────────────────────
+│
+│ PROBLEM STATEMENT:
+│ Small businesses need automated compliance monitoring for MS 365 Entra ID to
+│ meet SOC 2, ISO 27001, and NIST requirements. Manual audits are error-prone
+│ and time-consuming for teams managing multiple small business clients.
+│
+│ BUSINESS VALUE:
+│ - Detect MFA configuration drift before audit failures
+│ - Identify stale/inactive accounts for deprovisioning
+│ - Flag suspicious login patterns (15+ failed attempts)
+│ - Maintain weekly compliance audit trail
+│ - Enable security automation to remediate findings
+│
+│ COMPLIANCE REQUIREMENTS:
+│ - SOC 2 CC6.1: Logical access controls including MFA
+│ - ISO 27001 A.9.4.2: Secure log-on procedures
+│ - NIST 800-53 IA-2(1): Multi-factor authentication
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ I - INFRASTRUCTURE (Tech Stack) ────────────────────────────────────────────
+│
+│ PLATFORM: Microsoft 365 Entra ID (Azure AD P2 license)
+│
+│ API & MODULES:
+│ - Microsoft Graph API (modern approach - no E5 required)
+│ - Required PowerShell modules:
+│   * Microsoft.Graph.Authentication
+│   * Microsoft.Graph.Users
+│   * Microsoft.Graph.Identity.SignIns
+│   * Microsoft.Graph.Reports
+│
+│ AUTHENTICATION:
+│ - App Registration with Client Secret (preferred for scheduled tasks)
+│ - Alternative: Certificate-based authentication (document both)
+│ - Required API Permissions:
+│   * User.Read.All
+│   * UserAuthenticationMethod.Read.All
+│   * AuditLog.Read.All
+│   * Directory.Read.All
+│
+│ DEPENDENCIES:
+│ - PowerShell 7.x (cross-platform support)
+│ - .NET Framework 4.7.2+ or .NET Core 3.1+
+│ - SMTP access for email notifications (port 587/TLS or 465/SSL)
+│
+│ ENVIRONMENT:
+│ - Windows 10/11 or Windows Server 2019+
+│ - Local file system access for baseline storage
+│ - Internet connectivity to graph.microsoft.com
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ T - TASKS (Detailed Requirements) ──────────────────────────────────────────
+│
+│ PRIMARY TASKS:
+│
+│ 1. AUTHENTICATION & SETUP
+│    - Accept tenant ID, client ID, and client secret as parameters
+│    - Connect to Microsoft Graph API with proper scopes
+│    - Validate connection before proceeding
+│    - Handle token refresh automatically
+│
+│ 2. USER DATA COLLECTION
+│    Pull the following fields for ALL users (excluding guests):
+│    - userPrincipalName
+│    - displayName
+│    - accountEnabled (true/false)
+│    - department
+│    - createdDateTime
+│    - signInActivity.lastSignInDateTime
+│    - signInActivity.lastSuccessfulSignInDateTime
+│    - assignedLicenses (list of SKUs)
+│
+│ 3. MFA AUTHENTICATION METHODS RETRIEVAL
+│    For each user, collect:
+│    - All registered authentication methods (app, phone, SMS, email, FIDO2)
+│    - Default authentication method
+│    - Count of total methods registered
+│    - Method registration dates (if available)
+│
+│ 4. USER STATUS CLASSIFICATION
+│    Categorize each user based on sign-in activity:
+│
+│    ACTIVE:
+│    - Last successful sign-in within 20 days
+│    - Account enabled = true
+│    - At least 1 successful login in window
+│
+│    INACTIVE (STALE):
+│    - No successful sign-in for 21+ days
+│    - Account may be enabled or disabled
+│    - Flag for potential deprovisioning
+│
+│    WARNING:
+│    - 15+ failed login attempts in last 20 days
+│    - Flag for security review (potential compromise)
+│
+│    DISABLED:
+│    - accountEnabled = false
+│
+│ 5. MFA DRIFT DETECTION
+│    Compare current state against baseline (previous week's snapshot):
+│
+│    FIRST RUN BEHAVIOR:
+│    - If no baseline exists, create initial baseline file
+│    - Set expectations: Default method = authenticator app
+│    - Set expectations: Minimum 2 methods registered
+│    - Flag all non-compliant users in initial report
+│
+│    SUBSEQUENT RUNS:
+│    - Load previous baseline JSON from local folder
+│    - Detect changes:
+│      * Default method changed from authenticator app
+│      * Number of methods decreased below 2
+│      * Any method added or removed
+│      * MFA completely disabled on previously compliant account
+│    - Classify drift severity:
+│      * CRITICAL: MFA disabled or removed entirely
+│      * HIGH: Default method changed or methods dropped below 2
+│      * MEDIUM: Non-authenticator method added
+│      * LOW: Additional method added (improvement)
+│
+│ 6. REPORTING & OUTPUT
+│    Generate CSV report with columns:
+│    - UserPrincipalName
+│    - DisplayName
+│    - Department
+│    - Status (Active/Inactive/Warning/Disabled)
+│    - AccountEnabled
+│    - CreatedDateTime
+│    - LastSignInDateTime
+│    - LastSuccessfulSignInDateTime
+│    - DaysSinceLastSignIn (calculated)
+│    - FailedLoginCount (last 20 days)
+│    - LicensesSKUs (comma-separated)
+│    - MFA_DefaultMethod
+│    - MFA_MethodCount
+│    - MFA_Methods (comma-separated list)
+│    - MFA_DriftStatus (None/Low/Medium/High/Critical)
+│    - MFA_DriftDetails (description of what changed)
+│    - ComplianceFlags (comma-separated: NoMFA, StaleAccount, SuspiciousLogins)
+│
+│    Include summary section at top of CSV:
+│    - Report Date
+│    - Total Users Scanned
+│    - Active Users
+│    - Inactive Users
+│    - Warning Users
+│    - Users with MFA Drift
+│    - Critical Findings Count
+│
+│ 7. BASELINE MANAGEMENT
+│    - Save current state as JSON in ./baselines/ folder
+│    - Filename format: EntraMFA_Baseline_YYYY-MM-DD.json
+│    - Retain last 8 weeks of baselines (auto-cleanup old files)
+│    - Include metadata: scan date, user count, script version
+│
+│ 8. EMAIL NOTIFICATION
+│    Send email to: services@bansheecybersecurity.com
+│    - Subject: "Entra MFA Compliance Report - [TenantName] - [Date]"
+│    - Body includes:
+│      * Executive summary (counts of each status)
+│      * Critical findings highlighted
+│      * Link/path to full CSV report
+│    - Attach CSV report to email
+│    - Only send if drift detected OR critical findings exist
+│    - Option to force send weekly regardless of findings
+│
+│ 9. ERROR HANDLING & LOGGING
+│    - Create log file in ./logs/ folder
+│    - Log filename: EntraCompliance_YYYY-MM-DD_HHMMSS.log
+│    - Log all API calls, errors, and warnings
+│    - Handle common errors:
+│      * Invalid credentials
+│      * Insufficient API permissions
+│      * Network/timeout issues
+│      * Missing baseline file (first run)
+│    - Provide clear error messages for novice users
+│
+│ 10. CONFIGURATION FILE
+│     Create config.json for easy customization:
+│     - Tenant ID
+│     - Client ID
+│     - Client Secret (encrypted or reference to Key Vault)
+│     - Email settings (SMTP server, port, credentials)
+│     - Thresholds (days for inactive, failed login count)
+│     - Baseline retention period
+│     - Report recipients
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ C - CHARACTER (User & Audience) ────────────────────────────────────────────
+│
+│ PRIMARY USER: Compliance Analyst
+│ - Responsible for SOC 2, ISO 27001, NIST compliance
+│ - Needs weekly audit trail for identity access controls
+│ - Must identify MFA drift and stale accounts
+│ - Will use reports to drive remediation actions
+│
+│ SECONDARY USER: Small Business IT Technicians
+│ - Managing <50 users per client
+│ - May support multiple client tenants
+│ - Novice PowerShell skill level
+│ - Need clear instructions and inline comments
+│ - Will run as weekly scheduled task
+│
+│ SKILL LEVEL REQUIREMENTS:
+│ - Extensive inline comments explaining each section
+│ - Step-by-step setup guide (separate README.md)
+│ - Clear parameter descriptions
+│ - Example configuration file with comments
+│ - Troubleshooting section for common errors
+│
+│ USE CASE SCENARIOS:
+│ 1. Initial deployment: First-time setup and baseline creation
+│ 2. Weekly execution: Automated drift detection
+│ 3. Audit preparation: Generate compliance evidence
+│ 4. Incident response: Identify compromised accounts
+│ 5. Multi-tenant: Run against multiple small business clients
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ H - HARNESS/HANDOFF (Execution & Scheduling) ───────────────────────────────
+│
+│ EXECUTION METHOD:
+│ - PowerShell script (.ps1) designed for Windows Task Scheduler
+│ - Support manual execution with -WhatIf for testing
+│ - Support -Force parameter to skip confirmations
+│
+│ SCHEDULING:
+│ - Weekly execution (recommended: Monday 6 AM)
+│ - Windows Task Scheduler configuration provided
+│ - Alternative: Azure Automation Runbook (document as option)
+│
+│ FOLDER STRUCTURE:
+│ ./EntraMFACompliance/
+│   ├── Invoke-EntraMFACompliance.ps1    (main script)
+│   ├── config.json                       (configuration)
+│   ├── README.md                         (setup guide)
+│   ├── /baselines/                       (JSON snapshots)
+│   ├── /reports/                         (CSV outputs)
+│   └── /logs/                            (execution logs)
+│
+│ SCHEDULED TASK PARAMETERS:
+│ - Run whether user is logged on or not
+│ - Run with highest privileges
+│ - Trigger: Weekly on Monday at 6:00 AM
+│ - Action: powershell.exe -ExecutionPolicy Bypass -File "path\to\script.ps1"
+│
+│ STORAGE LOCATIONS:
+│ - Baselines: Local folder ./baselines/ (JSON format)
+│ - Reports: Local folder ./reports/ (CSV format)
+│ - Logs: Local folder ./logs/ (TXT format)
+│ - Retention: Auto-delete files older than 60 days
+│
+│ EMAIL DELIVERY:
+│ - Automatic send after successful report generation
+│ - Recipient: services@bansheecybersecurity.com
+│ - Timing: Immediately after CSV creation
+│ - Fallback: Save email as .eml file if SMTP fails
+│
+│ MAINTENANCE:
+│ - Self-cleaning: Remove baselines/reports/logs >60 days old
+│ - Health check: Verify Graph API connectivity before scan
+│ - Update check: Notify if newer version available (optional)
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+───────────────────────────────────────────────────────────────────────────────
+✨ CRAFT - VALIDATION CRITERIA
+───────────────────────────────────────────────────────────────────────────────
+
+┌─ C - CODE COMPLETENESS ──────────────────────────────────────────────────────
+│
+│ VERIFICATION CHECKLIST:
+│ ☐ All 10 tasks from WITCH section implemented
+│ ☐ User data collection includes all 8 required fields
+│ ☐ MFA methods collection covers all authentication types
+│ ☐ User status logic correctly implements Active/Inactive/Warning/Disabled
+│ ☐ Drift detection handles first run and subsequent comparisons
+│ ☐ CSV report contains all 18 required columns
+│ ☐ Summary section included at top of CSV
+│ ☐ Baseline save/load functionality complete
+│ ☐ Email notification with attachment works
+│ ☐ Configuration file supports all settings
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ R - RISKS & ASSUMPTIONS ────────────────────────────────────────────────────
+│
+│ RISKS TO VALIDATE:
+│ ☐ Client secret stored securely (not hardcoded in script)
+│ ☐ API permissions documented and validated
+│ ☐ Rate limiting handled for tenants with 1000+ users
+│ ☐ Graph API throttling errors caught and retried
+│ ☐ Failed login count may be unavailable in P2 (requires P1/E5 for full logs)
+│ ☐ SignInActivity requires Azure AD Premium license
+│ ☐ SMTP credentials not stored in plain text
+│ ☐ Email delivery failures logged and reported
+│ ☐ Baseline file corruption handling
+│ ☐ Concurrent execution prevention (lock file)
+│
+│ ASSUMPTIONS TO CHALLENGE:
+│ ☐ Assumes P2 license provides access to signInActivity
+│ ☐ Assumes local disk space sufficient for 60 days retention
+│ ☐ Assumes SMTP relay available (may need auth or allow list)
+│ ☐ Assumes single tenant execution (multi-tenant support needed?)
+│ ☐ Assumes Windows environment (cross-platform consideration?)
+│ ☐ Assumes app registration permissions already granted by admin
+│ ☐ Assumes CSV format sufficient (Excel .xlsx alternative needed?)
+│ ☐ Assumes 50 users = safe API call volume (batch processing needed?)
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ A - ADDED EXTRAS ───────────────────────────────────────────────────────────
+│
+│ HELPFUL ADDITIONS:
+│ ☐ README.md with Azure app registration walkthrough
+│ ☐ Sample config.json with explanatory comments
+│ ☐ Task Scheduler XML export for easy import
+│ ☐ Test mode (-WhatIf) to preview without saving
+│ ☐ Verbose logging option for troubleshooting
+│ ☐ HTML report option in addition to CSV
+│ ☐ Dashboard summary (compliance score calculation)
+│ ☐ Remediation script templates for common findings
+│
+│ PROBLEMATIC ADDITIONS TO AVOID:
+│ ☐ Automatic user disabling (requires approval workflow)
+│ ☐ Automatic MFA enrollment (user interaction required)
+│ ☐ Sending reports to end users (privacy concern)
+│ ☐ Storing credentials in script file
+│ ☐ External dependencies not in standard modules
+│ ☐ Cloud storage without encryption
+│ ☐ Telemetry/phone-home without disclosure
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ F - FLEXIBILITY & SCALING ──────────────────────────────────────────────────
+│
+│ MODULARITY REQUIREMENTS:
+│ ☐ Separate functions for each major task (connect, collect, analyze, report)
+│ ☐ Configuration externalized to config.json
+│ ☐ Thresholds parameterized (not hardcoded)
+│ ☐ Email templates separate from logic
+│ ☐ Graph API queries reusable across functions
+│
+│ MAINTAINABILITY:
+│ ☐ Inline comments for novice users (every 5-10 lines)
+│ ☐ Function headers with description, parameters, returns
+│ ☐ Consistent naming convention (Verb-Noun)
+│ ☐ Error messages reference line numbers or function names
+│ ☐ Version number in script header and config
+│
+│ SCALABILITY CONSIDERATIONS:
+│ ☐ Handle tenants up to 500 users (future growth)
+│ ☐ Batch Graph API calls for tenants >100 users
+│ ☐ Pagination support for large result sets
+│ ☐ Parallel processing option for multi-tenant scenarios
+│ ☐ Database backend option (vs file-based) for enterprise use
+│ ☐ Configurable batch size for API calls
+│
+│ EXTENSIBILITY:
+│ ☐ Plugin architecture for custom compliance rules
+│ ☐ Export/import baseline format documented
+│ ☐ Webhook support for integration with SIEM/SOAR
+│ ☐ Additional authentication methods easy to add
+│ ☐ Custom report columns via config file
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+┌─ T - TESTING, LOGGING & OUTPUT ──────────────────────────────────────────────
+│
+│ INPUT VALIDATION:
+│ ☐ Verify config.json exists before execution
+│ ☐ Validate tenant ID format (GUID)
+│ ☐ Validate client ID format (GUID)
+│ ☐ Test client secret not empty
+│ ☐ Verify output folders exist (create if missing)
+│ ☐ Check PowerShell version >=7.0
+│ ☐ Validate required modules installed
+│ ☐ Test Graph API connectivity before full scan
+│
+│ LOGGING REQUIREMENTS:
+│ ☐ Timestamp every log entry
+│ ☐ Log levels: INFO, WARNING, ERROR, DEBUG
+│ ☐ Log API calls with response times
+│ ☐ Log drift detection results
+│ ☐ Log email send success/failure
+│ ☐ Log file rotation (new file daily or per run)
+│ ☐ Include correlation ID for troubleshooting
+│
+│ ERROR HANDLING:
+│ ☐ Try/Catch blocks around all API calls
+│ ☐ Graceful degradation if optional data unavailable
+│ ☐ Retry logic for transient Graph API errors
+│ ☐ Clear error messages for authentication failures
+│ ☐ Fallback behavior if baseline missing (first run)
+│ ☐ Continue processing other users if one fails
+│ ☐ Summary of errors at end of execution
+│
+│ OUTPUT VALIDATION:
+│ ☐ CSV file created successfully
+│ ☐ All expected columns present
+│ ☐ No truncated data (handle long strings)
+│ ☐ Proper CSV escaping (commas, quotes)
+│ ☐ Baseline JSON well-formed and parsable
+│ ☐ Email sent and delivery confirmed
+│ ☐ Attachment size within SMTP limits (<10MB)
+│
+│ TESTING SCENARIOS:
+│ ☐ First run (no baseline exists)
+│ ☐ Subsequent run (baseline exists, no changes)
+│ ☐ Drift detected (MFA method changed)
+│ ☐ New user added since last scan
+│ ☐ User deleted since last scan
+│ ☐ Invalid credentials
+│ ☐ Network timeout
+│ ☐ Empty tenant (0 users)
+│ ☐ Large tenant (500+ users)
+│ ☐ Guest users present (should be excluded)
+│ ☐ Users without MFA registered
+│ ☐ Users with multiple MFA methods
+│ ☐ Email delivery failure
+│ ☐ Disk space full
+│ ☐ Baseline file corrupted
+│
+└──────────────────────────────────────────────────────────────────────────────
+
+───────────────────────────────────────────────────────────────────────────────
+📋 DELIVERABLES CHECKLIST
+───────────────────────────────────────────────────────────────────────────────
+
+SCRIPTS:
+☐ Invoke-EntraMFACompliance.ps1 (main script with extensive comments)
+
+DOCUMENTATION:
+☐ README.md (setup guide for novice users)
+☐ SETUP_GUIDE.md (Azure app registration walkthrough)
+☐ TROUBLESHOOTING.md (common errors and solutions)
+
+CONFIGURATION:
+☐ config.json (template with explanatory comments)
+☐ config.EXAMPLE.json (safe to commit to git)
+☐ TaskScheduler_EntraCompliance.xml (import-ready task)
+
+SUPPORTING FILES:
+☐ .gitignore (exclude secrets, logs, reports)
+☐ LICENSE (if open source)
+☐ CHANGELOG.md (version history)
+
+TESTING:
+☐ Test-GraphConnection.ps1 (validate API permissions)
+☐ New-TestBaseline.ps1 (create sample baseline for testing)
+
+───────────────────────────────────────────────────────────────────────────────
+🎯 SUCCESS CRITERIA
+───────────────────────────────────────────────────────────────────────────────
+
+The solution is successful when:
+
+1. ✅ A novice IT technician can set up and run the script in <30 minutes
+2. ✅ First run creates valid baseline without errors
+3. ✅ Weekly runs detect MFA drift accurately
+4. ✅ CSV report includes all required fields and summary
+5. ✅ Email notifications arrive reliably at services@bansheecybersecurity.com
+6. ✅ Stale accounts (21+ days) correctly flagged
+7. ✅ Warning status triggers on 15+ failed logins
+8. ✅ Script runs unattended via Task Scheduler
+9. ✅ Inline comments make code understandable to novices
+10. ✅ Compliance requirements (SOC 2, ISO 27001, NIST) supported
+
+───────────────────────────────────────────────────────────────────────────────
+📝 NOTES & SPECIAL CONSIDERATIONS
+───────────────────────────────────────────────────────────────────────────────
+
+1. GRAPH API LIMITATIONS WITH P2 LICENSE:
+   - signInActivity requires Azure AD Premium (P1/P2) ✓ Available
+   - Failed login counts require Azure AD audit logs (may need P1/E5)
+   - If failed login data unavailable, document limitation and set to "N/A"
+
+2. FIRST RUN TESTING SETUP:
+   - Create sample baseline JSON for testing drift detection
+   - Document process to manually modify baseline for validation
+   - Include test cases: method removal, default change, user addition
+
+3. MULTI-TENANT SUPPORT (FUTURE):
+   - Current design: single tenant per execution
+   - Future enhancement: loop through array of tenant configs
+   - Each tenant gets separate baseline and report
+
+4. SECURITY BEST PRACTICES:
+   - Never commit config.json with real secrets to version control
+   - Document Azure Key Vault integration option
+   - Recommend certificate auth over client secret for production
+   - Use Managed Identity if running in Azure Automation
+
+5. COMPLIANCE AUDIT TRAIL:
+   - Retain baselines for 60 days minimum (configurable)
+   - CSV reports serve as evidence for auditors
+   - Timestamp and version all outputs
+   - Log who initiated manual runs (if applicable)
+
+═══════════════════════════════════════════════════════════════════════════════
+END OF WITCHCRAFT SPECIFICATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Specification Version: 1.0
+Created: 2025-10-07
+Framework: WITCHCRAFT (WITCH + CRAFT)
+Target Completion: [To be determined]

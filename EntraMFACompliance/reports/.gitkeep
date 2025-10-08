@@ -1,0 +1,2 @@
+# This file ensures the reports folder is tracked in git
+# Actual report CSV files are ignored via .gitignore
